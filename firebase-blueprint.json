@@ -1,0 +1,470 @@
+{
+  "entities": {
+    "SiteConfig": {
+      "title": "SiteConfig",
+      "description": "Global romantic configuration for Zikri & Diann Our Little World",
+      "type": "object",
+      "properties": {
+        "coupleNames": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "heroGreeting": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "couplePhotoUrl": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "finalLetter": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "secretHint": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "secretCodeHash": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[a-f0-9]{64}$" },
+        "secretMessage": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coupleNames", "heroGreeting", "couplePhotoUrl", "finalLetter", "secretHint", "secretCodeHash", "secretMessage", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private non-PII user pairing state storing active couple space ID and partner role",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "roleName": { "type": "string", "enum": ["Zikri", "Diann"] },
+        "spaceId": { "type": "string", "minLength": 0, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "roleName", "spaceId", "createdAt", "updatedAt"]
+    },
+    "InviteCode": {
+      "title": "InviteCode",
+      "description": "Unique single-use couple invitation code mapping to a CoupleSpace",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 6, "maxLength": 12, "pattern": "^[A-Z0-9]{6,12}$" },
+        "spaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "creatorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "spaceId", "creatorUid", "isActive", "createdAt", "updatedAt"]
+    },
+    "CoupleSpace": {
+      "title": "CoupleSpace",
+      "description": "Private shared space strictly limited to two partner members",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "inviteCode": { "type": "string", "minLength": 6, "maxLength": 12, "pattern": "^[A-Z0-9]{6,12}$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "member1Uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "member1Name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "member2Uid": { "type": "string", "minLength": 0, "maxLength": 128 },
+        "member2Name": { "type": "string", "minLength": 0, "maxLength": 60 },
+        "memberCount": { "type": "number" },
+        "candleLit": { "type": "boolean" },
+        "candleWish": { "type": "string", "minLength": 0, "maxLength": 300 },
+        "anniversaryOpened": { "type": "boolean" },
+        "sharedSongId": { "type": "string", "minLength": 0, "maxLength": 64 },
+        "sharedSongTitle": { "type": "string", "minLength": 0, "maxLength": 180 },
+        "sharedSongArtist": { "type": "string", "minLength": 0, "maxLength": 140 },
+        "sharedSongPlaying": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title", "inviteCode", "ownerUid", "member1Uid", "member1Name",
+        "member2Uid", "member2Name", "memberCount", "candleLit", "candleWish",
+        "anniversaryOpened", "sharedSongId", "sharedSongTitle", "sharedSongArtist",
+        "sharedSongPlaying", "createdAt", "updatedAt"
+      ]
+    },
+    "SpacePresence": {
+      "title": "SpacePresence",
+      "description": "Online/offline presence and optional active page inside a CoupleSpace",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "roleName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "online": { "type": "boolean" },
+        "sharePage": { "type": "boolean" },
+        "currentPage": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "lastSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "roleName", "online", "sharePage", "currentPage", "lastSeen"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Private real-time chat message between Zikri & Diann",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "text": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "sticker": { "type": "string", "minLength": 0, "maxLength": 40 },
+        "readByPartner": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderUid", "senderName", "text", "sticker", "readByPartner", "createdAt", "updatedAt"]
+    },
+    "SpaceMemory": {
+      "title": "SpaceMemory",
+      "description": "Shared memory uploaded by Zikri or Diann inside their CoupleSpace",
+      "type": "object",
+      "properties": {
+        "caption": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "dateLabel": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "category": { "type": "string", "enum": ["First Dates", "Jalan-Jalan", "Random Lucu", "Special Moments"] },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "storagePath": { "type": "string", "minLength": 0, "maxLength": 300 },
+        "uploaderUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uploaderName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["caption", "dateLabel", "category", "imageUrl", "uploaderUid", "uploaderName", "createdAt", "updatedAt"]
+    },
+    "MemoryComment": {
+      "title": "MemoryComment",
+      "description": "Comment on a shared memory photo",
+      "type": "object",
+      "properties": {
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorUid", "authorName", "text", "createdAt"]
+    },
+    "SharedGameState": {
+      "title": "SharedGameState",
+      "description": "Real-time multiplayer state for Play Together mini games",
+      "type": "object",
+      "properties": {
+        "gameType": { "type": "string", "enum": ["tictactoe", "truth-or-dare", "love-quiz", "spin-wheel", "guess-emoji"] },
+        "payload": { "type": "object" },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["gameType", "payload", "updatedByUid", "updatedAt"]
+    },
+    "Memory": {
+      "title": "Memory",
+      "description": "Public showcase memory item",
+      "type": "object",
+      "properties": {
+        "caption": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "dateLabel": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "category": { "type": "string", "enum": ["First Dates", "Jalan-Jalan", "Random Lucu", "Special Moments"] },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "storagePath": { "type": "string", "minLength": 0, "maxLength": 300 },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["caption", "dateLabel", "category", "imageUrl", "isPublic", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "TimelineItem": {
+      "title": "TimelineItem",
+      "description": "Our Journey relationship milestone",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "dateLabel": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "imageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "sortOrder": { "type": "number" },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "dateLabel", "description", "sortOrder", "isPublic", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "Song": {
+      "title": "Song",
+      "description": "Music Room Audio or YouTube song item",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "artist": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "youtubeUrl": { "type": "string", "minLength": 0, "maxLength": 500 },
+        "youtubeId": { "type": "string", "minLength": 0, "maxLength": 64 },
+        "audioUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "artworkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "sourceType": { "type": "string", "enum": ["audio", "youtube"] },
+        "storagePath": { "type": "string", "minLength": 0, "maxLength": 300 },
+        "uploaderName": { "type": "string", "minLength": 0, "maxLength": 60 },
+        "playlistId": { "type": "string", "minLength": 0, "maxLength": 64 },
+        "moodTag": { "type": "string", "enum": ["Romantic", "Chill", "Sad", "Special", "Mood", "Indie", "Rock", ""] },
+        "isFavorite": { "type": "boolean" },
+        "isSpecialSong": { "type": "boolean" },
+        "sortOrder": { "type": "number" },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "artist", "youtubeUrl", "youtubeId", "sortOrder", "isPublic", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "SharedPlaylist": {
+      "title": "SharedPlaylist",
+      "description": "Custom or mood shared playlist created by Zikri or Diann",
+      "type": "object",
+      "properties": {
+        "coupleSpaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "minLength": 0, "maxLength": 240 },
+        "moodType": { "type": "string", "enum": ["Romantic", "Chill", "Sad", "Special", "Mood", "Custom"] },
+        "creatorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "creatorName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coupleSpaceId", "name", "description", "moodType", "creatorUid", "creatorName", "createdAt", "updatedAt"]
+    },
+    "RadioSyncState": {
+      "title": "RadioSyncState",
+      "description": "Listening Together live sync state for Our Love Radio",
+      "type": "object",
+      "properties": {
+        "coupleSpaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "songId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "songTitle": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "songArtist": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "playlistId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "currentIndex": { "type": "number" },
+        "playbackStatus": { "type": "string", "enum": ["playing", "paused"] },
+        "currentPosition": { "type": "number" },
+        "lastUpdatedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "lastUpdatedByName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "member1Joined": { "type": "boolean" },
+        "member2Joined": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coupleSpaceId", "songId", "songTitle", "songArtist", "playlistId", "currentIndex", "playbackStatus", "currentPosition", "lastUpdatedByUid", "lastUpdatedByName", "member1Joined", "member2Joined", "updatedAt"]
+    },
+    "SongDedication": {
+      "title": "SongDedication",
+      "description": "Romantic song dedication letter between Zikri and Diann",
+      "type": "object",
+      "properties": {
+        "coupleSpaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "songId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "songTitle": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "songArtist": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "artworkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "youtubeUrl": { "type": "string", "minLength": 0, "maxLength": 500 },
+        "audioUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "openedByPartner": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coupleSpaceId", "senderUid", "senderName", "songId", "songTitle", "songArtist", "artworkUrl", "youtubeUrl", "audioUrl", "message", "openedByPartner", "createdAt", "updatedAt"]
+    },
+    "SongStory": {
+      "title": "SongStory",
+      "description": "Our Song Story personal memory attached to a meaningful song",
+      "type": "object",
+      "properties": {
+        "coupleSpaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "songTitle": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "artist": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "dateLabel": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "story": { "type": "string", "minLength": 1, "maxLength": 1200 },
+        "imageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "storagePath": { "type": "string", "minLength": 0, "maxLength": 300 },
+        "uploaderUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uploaderName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coupleSpaceId", "songTitle", "artist", "dateLabel", "story", "uploaderUid", "uploaderName", "createdAt", "updatedAt"]
+    },
+    "MusicHistoryItem": {
+      "title": "MusicHistoryItem",
+      "description": "Listening history entry inside CoupleSpace",
+      "type": "object",
+      "properties": {
+        "coupleSpaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "songId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "songTitle": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "artist": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "sourceType": { "type": "string", "enum": ["audio", "youtube"] },
+        "playedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "playedByName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coupleSpaceId", "songId", "songTitle", "artist", "sourceType", "playedByUid", "playedByName", "createdAt"]
+    },
+    "GameRoom": {
+      "title": "GameRoom",
+      "description": "Real-time synchronized multiplayer room for Zikri & Diann",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "coupleSpaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "player1Id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "player1Name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "player2Id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "player2Name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "invitedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "gameType": {
+          "type": "string",
+          "enum": [
+            "tictactoe", "connect_four", "memory_match", "quiz_battle", "guess_emoji",
+            "truth_or_dare", "spin_wheel", "this_or_that", "who_knows_better", "guess_song"
+          ]
+        },
+        "status": { "type": "string", "enum": ["invited", "lobby", "playing", "finished", "closed"] },
+        "player1Ready": { "type": "boolean" },
+        "player2Ready": { "type": "boolean" },
+        "currentTurn": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "turnNumber": { "type": "number" },
+        "gameState": { "type": "object" },
+        "score": { "type": "object" },
+        "winnerId": { "type": "string", "minLength": 0, "maxLength": 128 },
+        "rematchVotes": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "roomId", "coupleSpaceId", "player1Id", "player1Name", "player2Id", "player2Name",
+        "invitedByUid", "gameType", "status", "player1Ready", "player2Ready", "currentTurn",
+        "turnNumber", "gameState", "score", "winnerId", "rematchVotes", "createdAt", "updatedAt"
+      ]
+    },
+    "GameHistoryEntry": {
+      "title": "GameHistoryEntry",
+      "description": "Completed match summary inside a CoupleSpace",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "coupleSpaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "gameType": {
+          "type": "string",
+          "enum": [
+            "tictactoe", "connect_four", "memory_match", "quiz_battle", "guess_emoji",
+            "truth_or_dare", "spin_wheel", "this_or_that", "who_knows_better", "guess_song"
+          ]
+        },
+        "gameTitle": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "player1Id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "player1Name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "player2Id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "player2Name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "score": { "type": "object" },
+        "winnerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "winnerName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "roomId", "coupleSpaceId", "gameType", "gameTitle", "player1Id", "player1Name",
+        "player2Id", "player2Name", "score", "winnerId", "winnerName", "createdAt", "updatedAt"
+      ]
+    },
+    "TruthOrDareItem": {
+      "title": "TruthOrDareItem",
+      "description": "Custom Truth or Dare prompt",
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "enum": ["truth", "dare"] },
+        "category": { "type": "string", "enum": ["Romantic", "Funny", "Deep Talk", "Relationship", "Jealousy", "Childhood", "Future", "Random"] },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["kind", "category", "prompt", "isPublic", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "LoveQuizQuestion": {
+      "title": "LoveQuizQuestion",
+      "description": "Editable Love Quiz question",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "options": { "type": "array" },
+        "correctIndex": { "type": "number" },
+        "explanation": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "sortOrder": { "type": "number" },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["question", "options", "correctIndex", "explanation", "sortOrder", "isPublic", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "LoveLetter": {
+      "title": "LoveLetter",
+      "description": "Custom love letter",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 3000 },
+        "author": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "body", "author", "isPublic", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "PromiseItem": {
+      "title": "PromiseItem",
+      "description": "Our Promise card",
+      "type": "object",
+      "properties": {
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "isPublic": { "type": "boolean" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorName", "text", "isPublic", "ownerUid", "createdAt", "updatedAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Admin role registry",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 180 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/siteConfig/{configId}": { "schema": { "$ref": "#/entities/SiteConfig" }, "description": "Global site config" },
+    "/userProfiles/{uid}": { "schema": { "$ref": "#/entities/UserProfile" }, "description": "Per-user couple pairing metadata" },
+    "/inviteCodes/{code}": { "schema": { "$ref": "#/entities/InviteCode" }, "description": "Single-use invite codes for CoupleSpace" },
+    "/coupleSpaces/{spaceId}": { "schema": { "$ref": "#/entities/CoupleSpace" }, "description": "Private 2-member couple space" },
+    "/coupleSpaces/{spaceId}/presence/{memberUid}": { "schema": { "$ref": "#/entities/SpacePresence" }, "description": "Member online status & active page" },
+    "/coupleSpaces/{spaceId}/messages/{msgId}": { "schema": { "$ref": "#/entities/ChatMessage" }, "description": "Private real-time chat messages" },
+    "/coupleSpaces/{spaceId}/memories/{memoryId}": { "schema": { "$ref": "#/entities/SpaceMemory" }, "description": "Shared couple photo gallery" },
+    "/coupleSpaces/{spaceId}/memories/{memoryId}/comments/{commentId}": { "schema": { "$ref": "#/entities/MemoryComment" }, "description": "Comments on shared memory photos" },
+    "/coupleSpaces/{spaceId}/games/{gameId}": { "schema": { "$ref": "#/entities/SharedGameState" }, "description": "Real-time multiplayer game states" },
+    "/coupleSpaces/{spaceId}/gameRooms/{roomId}": { "schema": { "$ref": "#/entities/GameRoom" }, "description": "Real-time multiplayer rooms with READY lobby and turn validation" },
+    "/coupleSpaces/{spaceId}/gameHistory/{historyId}": { "schema": { "$ref": "#/entities/GameHistoryEntry" }, "description": "Match history archive per CoupleSpace" },
+    "/coupleSpaces/{spaceId}/songs/{songId}": { "schema": { "$ref": "#/entities/Song" }, "description": "Shared playlist songs" },
+    "/coupleSpaces/{spaceId}/playlists/{playlistId}": { "schema": { "$ref": "#/entities/SharedPlaylist" }, "description": "Custom and mood shared playlists" },
+    "/coupleSpaces/{spaceId}/radioSync/{syncId}": { "schema": { "$ref": "#/entities/RadioSyncState" }, "description": "Listening Together real-time state" },
+    "/coupleSpaces/{spaceId}/songDedications/{dedicationId}": { "schema": { "$ref": "#/entities/SongDedication" }, "description": "Song dedication letters between partners" },
+    "/coupleSpaces/{spaceId}/songStories/{storyId}": { "schema": { "$ref": "#/entities/SongStory" }, "description": "Personal stories behind meaningful songs" },
+    "/coupleSpaces/{spaceId}/musicHistory/{historyId}": { "schema": { "$ref": "#/entities/MusicHistoryItem" }, "description": "Recently played couple radio log" },
+    "/coupleSpaces/{spaceId}/promises/{promiseId}": { "schema": { "$ref": "#/entities/PromiseItem" }, "description": "Shared couple promises" },
+    "/coupleSpaces/{spaceId}/timeline/{itemId}": { "schema": { "$ref": "#/entities/TimelineItem" }, "description": "Shared timeline milestones" },
+    "/memories/{memoryId}": { "schema": { "$ref": "#/entities/Memory" }, "description": "Showcase memories" },
+    "/timeline/{itemId}": { "schema": { "$ref": "#/entities/TimelineItem" }, "description": "Showcase timeline" },
+    "/songs/{songId}": { "schema": { "$ref": "#/entities/Song" }, "description": "Showcase songs" },
+    "/truthOrDare/{itemId}": { "schema": { "$ref": "#/entities/TruthOrDareItem" }, "description": "Custom Truth or Dare" },
+    "/quizQuestions/{itemId}": { "schema": { "$ref": "#/entities/LoveQuizQuestion" }, "description": "Editable Love Quiz" },
+    "/loveLetters/{itemId}": { "schema": { "$ref": "#/entities/LoveLetter" }, "description": "Custom Love Letters" },
+    "/promises/{promiseId}": { "schema": { "$ref": "#/entities/PromiseItem" }, "description": "Showcase promises" },
+    "/admins/{adminId}": { "schema": { "$ref": "#/entities/AdminUser" }, "description": "Admin registry" }
+  }
+}

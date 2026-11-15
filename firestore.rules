@@ -1,0 +1,801 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Supports Google Login (email_verified == true) and Email/Password accounts created by Zikri/Diann
+    function isAuthenticatedUser() {
+      return isSignedIn() && request.auth.uid is string;
+    }
+
+    function isVerifiedAdminEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true && request.auth.token.email == 'zikrinurm@gmail.com';
+    }
+
+    function isAdmin() {
+      return isVerifiedAdminEmail() || (isSignedIn() && request.auth.token.email_verified == true && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isValidTimestampOnCreate(data) {
+      return data.createdAt is timestamp && data.updatedAt is timestamp && data.createdAt == request.time && data.updatedAt == request.time;
+    }
+
+    function isValidTimestampOnUpdate(data) {
+      return data.createdAt == existing().createdAt && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    // CoupleSpace Master Gate (strictly 2 members: member1Uid and member2Uid)
+    function getSpace(spaceId) {
+      return get(/databases/$(database)/documents/coupleSpaces/$(spaceId)).data;
+    }
+
+    function isSpaceMember(spaceId) {
+      return isAuthenticatedUser()
+        && exists(/databases/$(database)/documents/coupleSpaces/$(spaceId))
+        && (
+          getSpace(spaceId).member1Uid == request.auth.uid
+          || (getSpace(spaceId).member2Uid != '' && getSpace(spaceId).member2Uid == request.auth.uid)
+        );
+    }
+
+    // Validation Helpers
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'roleName', 'spaceId', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'roleName', 'spaceId', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.roleName in ['Zikri', 'Diann']
+        && data.spaceId is string && data.spaceId.size() <= 128;
+    }
+
+    function isValidInviteCode(data) {
+      return data.keys().hasAll(['code', 'spaceId', 'creatorUid', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['code', 'spaceId', 'creatorUid', 'isActive', 'createdAt', 'updatedAt'])
+        && data.code is string && data.code.matches('^[A-Z0-9]{6,12}$')
+        && data.spaceId is string && isValidId(data.spaceId)
+        && data.creatorUid is string && data.creatorUid.size() >= 1 && data.creatorUid.size() <= 128
+        && data.isActive is bool;
+    }
+
+    function isValidCoupleSpace(data) {
+      return data.keys().hasAll([
+          'title', 'inviteCode', 'ownerUid', 'member1Uid', 'member1Name',
+          'member2Uid', 'member2Name', 'memberCount', 'candleLit', 'candleWish',
+          'anniversaryOpened', 'sharedSongId', 'sharedSongTitle', 'sharedSongArtist',
+          'sharedSongPlaying', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title', 'inviteCode', 'ownerUid', 'member1Uid', 'member1Name',
+          'member2Uid', 'member2Name', 'memberCount', 'candleLit', 'candleWish',
+          'anniversaryOpened', 'sharedSongId', 'sharedSongTitle', 'sharedSongArtist',
+          'sharedSongPlaying', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.inviteCode is string && data.inviteCode.matches('^[A-Z0-9]{6,12}$')
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.member1Uid is string && data.member1Uid.size() >= 1 && data.member1Uid.size() <= 128
+        && data.member1Name is string && data.member1Name.size() >= 1 && data.member1Name.size() <= 60
+        && data.member2Uid is string && data.member2Uid.size() <= 128
+        && data.member2Name is string && data.member2Name.size() <= 60
+        && data.memberCount is int && (data.memberCount == 1 || data.memberCount == 2)
+        && data.candleLit is bool
+        && data.candleWish is string && data.candleWish.size() <= 300
+        && data.anniversaryOpened is bool
+        && data.sharedSongId is string && data.sharedSongId.size() <= 64
+        && data.sharedSongTitle is string && data.sharedSongTitle.size() <= 180
+        && data.sharedSongArtist is string && data.sharedSongArtist.size() <= 140
+        && data.sharedSongPlaying is bool;
+    }
+
+    function isValidSpacePresence(data) {
+      return data.keys().hasAll(['uid', 'roleName', 'online', 'sharePage', 'currentPage', 'lastSeen'])
+        && data.keys().hasOnly(['uid', 'roleName', 'online', 'sharePage', 'currentPage', 'lastSeen'])
+        && data.uid is string && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.roleName is string && data.roleName.size() >= 1 && data.roleName.size() <= 60
+        && data.online is bool
+        && data.sharePage is bool
+        && data.currentPage is string && data.currentPage.size() >= 1 && data.currentPage.size() <= 80
+        && data.lastSeen is timestamp && data.lastSeen == request.time;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['senderUid', 'senderName', 'text', 'sticker', 'readByPartner', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['senderUid', 'senderName', 'text', 'sticker', 'readByPartner', 'createdAt', 'updatedAt'])
+        && data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 60
+        && data.text is string && data.text.size() <= 2000
+        && data.sticker is string && data.sticker.size() <= 40
+        && (data.text.size() > 0 || data.sticker.size() > 0)
+        && data.readByPartner is bool;
+    }
+
+    function isValidSpaceMemory(data) {
+      return data.keys().hasAll(['caption', 'dateLabel', 'category', 'imageUrl', 'uploaderUid', 'uploaderName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['caption', 'dateLabel', 'category', 'imageUrl', 'storagePath', 'uploaderUid', 'uploaderName', 'createdAt', 'updatedAt'])
+        && data.caption is string && data.caption.size() >= 1 && data.caption.size() <= 500
+        && data.dateLabel is string && data.dateLabel.size() >= 1 && data.dateLabel.size() <= 60
+        && data.category in ['First Dates', 'Jalan-Jalan', 'Random Lucu', 'Special Moments']
+        && data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 2000
+        && (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 300))
+        && data.uploaderUid is string && data.uploaderUid.size() >= 1 && data.uploaderUid.size() <= 128
+        && data.uploaderName is string && data.uploaderName.size() >= 1 && data.uploaderName.size() <= 60;
+    }
+
+    function isValidMemoryComment(data) {
+      return data.keys().hasAll(['authorUid', 'authorName', 'text', 'createdAt'])
+        && data.keys().hasOnly(['authorUid', 'authorName', 'text', 'createdAt'])
+        && data.authorUid is string && data.authorUid == request.auth.uid && data.authorUid.size() <= 128
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 60
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 400
+        && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    function isValidSharedGameState(data) {
+      return data.keys().hasAll(['gameType', 'payload', 'updatedByUid', 'updatedAt'])
+        && data.keys().hasOnly(['gameType', 'payload', 'updatedByUid', 'updatedAt'])
+        && data.gameType in ['tictactoe', 'truth-or-dare', 'love-quiz', 'spin-wheel', 'guess-emoji']
+        && data.payload is map && data.payload.keys().size() <= 25
+        && data.updatedByUid is string && data.updatedByUid == request.auth.uid && data.updatedByUid.size() <= 128
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidGameRoom(data, spaceId, roomId) {
+      return data.keys().hasAll([
+          'roomId', 'coupleSpaceId', 'player1Id', 'player1Name', 'player2Id', 'player2Name',
+          'invitedByUid', 'gameType', 'status', 'player1Ready', 'player2Ready', 'currentTurn',
+          'turnNumber', 'gameState', 'score', 'winnerId', 'rematchVotes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'roomId', 'coupleSpaceId', 'player1Id', 'player1Name', 'player2Id', 'player2Name',
+          'invitedByUid', 'gameType', 'status', 'player1Ready', 'player2Ready', 'currentTurn',
+          'turnNumber', 'gameState', 'score', 'winnerId', 'rematchVotes', 'createdAt', 'updatedAt'
+        ])
+        && data.roomId == roomId
+        && data.coupleSpaceId == spaceId
+        && data.player1Id is string && data.player1Id.size() >= 1 && data.player1Id.size() <= 128
+        && data.player1Name is string && data.player1Name.size() >= 1 && data.player1Name.size() <= 60
+        && data.player2Id is string && data.player2Id.size() >= 1 && data.player2Id.size() <= 128
+        && data.player2Name is string && data.player2Name.size() >= 1 && data.player2Name.size() <= 60
+        && data.invitedByUid is string && data.invitedByUid.size() >= 1 && data.invitedByUid.size() <= 128
+        && data.gameType in [
+          'tictactoe', 'connect_four', 'memory_match', 'quiz_battle', 'guess_emoji',
+          'truth_or_dare', 'spin_wheel', 'this_or_that', 'who_knows_better', 'guess_song'
+        ]
+        && data.status in ['invited', 'lobby', 'playing', 'finished', 'closed']
+        && data.player1Ready is bool
+        && data.player2Ready is bool
+        && data.currentTurn is string && data.currentTurn.size() >= 1 && data.currentTurn.size() <= 128
+        && data.turnNumber is int && data.turnNumber >= 0 && data.turnNumber <= 5000
+        && data.gameState is map && data.gameState.keys().size() <= 25
+        && data.score is map && data.score.keys().hasAll(['player1', 'player2']) && data.score.keys().hasOnly(['player1', 'player2'])
+        && data.score.player1 is int && data.score.player1 >= 0 && data.score.player1 <= 100000
+        && data.score.player2 is int && data.score.player2 >= 0 && data.score.player2 <= 100000
+        && data.winnerId is string && data.winnerId.size() <= 128
+        && data.rematchVotes is map && data.rematchVotes.keys().hasAll(['player1', 'player2']) && data.rematchVotes.keys().hasOnly(['player1', 'player2'])
+        && data.rematchVotes.player1 is bool && data.rematchVotes.player2 is bool;
+    }
+
+    function isValidGameHistory(data, spaceId) {
+      return data.keys().hasAll([
+          'roomId', 'coupleSpaceId', 'gameType', 'gameTitle', 'player1Id', 'player1Name',
+          'player2Id', 'player2Name', 'score', 'winnerId', 'winnerName', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'roomId', 'coupleSpaceId', 'gameType', 'gameTitle', 'player1Id', 'player1Name',
+          'player2Id', 'player2Name', 'score', 'winnerId', 'winnerName', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.roomId)
+        && data.coupleSpaceId == spaceId
+        && data.gameType in [
+          'tictactoe', 'connect_four', 'memory_match', 'quiz_battle', 'guess_emoji',
+          'truth_or_dare', 'spin_wheel', 'this_or_that', 'who_knows_better', 'guess_song'
+        ]
+        && data.gameTitle is string && data.gameTitle.size() >= 1 && data.gameTitle.size() <= 80
+        && data.player1Id is string && data.player1Id.size() >= 1 && data.player1Id.size() <= 128
+        && data.player1Name is string && data.player1Name.size() >= 1 && data.player1Name.size() <= 60
+        && data.player2Id is string && data.player2Id.size() >= 1 && data.player2Id.size() <= 128
+        && data.player2Name is string && data.player2Name.size() >= 1 && data.player2Name.size() <= 60
+        && data.score is map && data.score.keys().hasAll(['player1', 'player2']) && data.score.keys().hasOnly(['player1', 'player2'])
+        && data.score.player1 is int && data.score.player1 >= 0 && data.score.player1 <= 100000
+        && data.score.player2 is int && data.score.player2 >= 0 && data.score.player2 <= 100000
+        && data.winnerId is string && data.winnerId.size() >= 1 && data.winnerId.size() <= 128
+        && data.winnerName is string && data.winnerName.size() >= 1 && data.winnerName.size() <= 60;
+    }
+
+    function isValidSiteConfig(data) {
+      return data.keys().hasAll([
+          'coupleNames', 'heroGreeting', 'couplePhotoUrl', 'finalLetter',
+          'secretHint', 'secretCodeHash', 'secretMessage', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'coupleNames', 'heroGreeting', 'couplePhotoUrl', 'finalLetter',
+          'secretHint', 'secretCodeHash', 'secretMessage', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.coupleNames is string && data.coupleNames.size() >= 1 && data.coupleNames.size() <= 100
+        && data.heroGreeting is string && data.heroGreeting.size() >= 1 && data.heroGreeting.size() <= 300
+        && data.couplePhotoUrl is string && data.couplePhotoUrl.size() >= 1 && data.couplePhotoUrl.size() <= 1500
+        && data.finalLetter is string && data.finalLetter.size() >= 1 && data.finalLetter.size() <= 8000
+        && data.secretHint is string && data.secretHint.size() >= 1 && data.secretHint.size() <= 500
+        && data.secretCodeHash is string && data.secretCodeHash.size() == 64 && data.secretCodeHash.matches('^[a-f0-9]{64}$')
+        && data.secretMessage is string && data.secretMessage.size() >= 1 && data.secretMessage.size() <= 5000
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 && data.ownerUid == request.auth.uid;
+    }
+
+    function isValidMemory(data) {
+      return data.keys().hasAll(['caption', 'dateLabel', 'category', 'imageUrl', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['caption', 'dateLabel', 'category', 'imageUrl', 'storagePath', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.caption is string && data.caption.size() >= 1 && data.caption.size() <= 500
+        && data.dateLabel is string && data.dateLabel.size() >= 1 && data.dateLabel.size() <= 60
+        && data.category in ['First Dates', 'Jalan-Jalan', 'Random Lucu', 'Special Moments']
+        && data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 2000
+        && (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 300))
+        && data.isPublic is bool
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 && data.ownerUid == request.auth.uid;
+    }
+
+    function isValidTimelineItem(data) {
+      return data.keys().hasAll(['title', 'dateLabel', 'description', 'sortOrder', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['title', 'dateLabel', 'description', 'imageUrl', 'sortOrder', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.dateLabel is string && data.dateLabel.size() >= 1 && data.dateLabel.size() <= 80
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 1500
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 2000))
+        && data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 10000
+        && data.isPublic is bool
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128;
+    }
+
+    function isValidSong(data) {
+      return data.keys().hasAll(['title', 'artist', 'youtubeUrl', 'youtubeId', 'sortOrder', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'title', 'artist', 'youtubeUrl', 'youtubeId', 'audioUrl', 'artworkUrl',
+          'sourceType', 'storagePath', 'uploaderName', 'playlistId', 'moodTag',
+          'isFavorite', 'isSpecialSong', 'sortOrder', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 180
+        && data.artist is string && data.artist.size() >= 1 && data.artist.size() <= 140
+        && data.youtubeUrl is string && data.youtubeUrl.size() <= 500
+        && data.youtubeId is string && data.youtubeId.size() <= 64
+        && (!('audioUrl' in data) || (data.audioUrl is string && data.audioUrl.size() <= 2000))
+        && (!('artworkUrl' in data) || (data.artworkUrl is string && data.artworkUrl.size() <= 2000))
+        && (!('sourceType' in data) || data.sourceType in ['audio', 'youtube'])
+        && (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 300))
+        && (!('uploaderName' in data) || (data.uploaderName is string && data.uploaderName.size() <= 60))
+        && (!('playlistId' in data) || (data.playlistId is string && data.playlistId.size() <= 64))
+        && (!('moodTag' in data) || data.moodTag in ['Romantic', 'Chill', 'Sad', 'Special', 'Mood', 'Indie', 'Rock', ''])
+        && (!('isFavorite' in data) || data.isFavorite is bool)
+        && (!('isSpecialSong' in data) || data.isSpecialSong is bool)
+        && ((data.youtubeUrl.size() >= 1 && data.youtubeId.size() >= 5) || ('audioUrl' in data && data.audioUrl.size() >= 1))
+        && data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 10000
+        && data.isPublic is bool
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128;
+    }
+
+    function isValidSharedPlaylist(data, spaceId) {
+      return data.keys().hasAll(['coupleSpaceId', 'name', 'description', 'moodType', 'creatorUid', 'creatorName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['coupleSpaceId', 'name', 'description', 'moodType', 'creatorUid', 'creatorName', 'createdAt', 'updatedAt'])
+        && data.coupleSpaceId == spaceId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.description is string && data.description.size() <= 240
+        && data.moodType in ['Romantic', 'Chill', 'Sad', 'Special', 'Mood', 'Custom']
+        && data.creatorUid is string && data.creatorUid.size() >= 1 && data.creatorUid.size() <= 128
+        && data.creatorName is string && data.creatorName.size() >= 1 && data.creatorName.size() <= 60;
+    }
+
+    function isValidRadioSync(data, spaceId) {
+      return data.keys().hasAll([
+          'coupleSpaceId', 'songId', 'songTitle', 'songArtist', 'playlistId',
+          'currentIndex', 'playbackStatus', 'currentPosition',
+          'lastUpdatedByUid', 'lastUpdatedByName', 'member1Joined', 'member2Joined', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'coupleSpaceId', 'songId', 'songTitle', 'songArtist', 'playlistId',
+          'currentIndex', 'playbackStatus', 'currentPosition',
+          'lastUpdatedByUid', 'lastUpdatedByName', 'member1Joined', 'member2Joined', 'updatedAt'
+        ])
+        && data.coupleSpaceId == spaceId
+        && data.songId is string && data.songId.size() >= 1 && data.songId.size() <= 64
+        && data.songTitle is string && data.songTitle.size() >= 1 && data.songTitle.size() <= 180
+        && data.songArtist is string && data.songArtist.size() >= 1 && data.songArtist.size() <= 140
+        && data.playlistId is string && data.playlistId.size() >= 1 && data.playlistId.size() <= 64
+        && data.currentIndex is int && data.currentIndex >= 0 && data.currentIndex <= 5000
+        && data.playbackStatus in ['playing', 'paused']
+        && data.currentPosition is number && data.currentPosition >= 0 && data.currentPosition <= 86400
+        && data.lastUpdatedByUid is string && data.lastUpdatedByUid == request.auth.uid && data.lastUpdatedByUid.size() <= 128
+        && data.lastUpdatedByName is string && data.lastUpdatedByName.size() >= 1 && data.lastUpdatedByName.size() <= 60
+        && data.member1Joined is bool
+        && data.member2Joined is bool
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidSongDedication(data, spaceId) {
+      return data.keys().hasAll([
+          'coupleSpaceId', 'senderUid', 'senderName', 'songId', 'songTitle', 'songArtist',
+          'artworkUrl', 'youtubeUrl', 'audioUrl', 'message', 'openedByPartner', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'coupleSpaceId', 'senderUid', 'senderName', 'songId', 'songTitle', 'songArtist',
+          'artworkUrl', 'youtubeUrl', 'audioUrl', 'message', 'openedByPartner', 'createdAt', 'updatedAt'
+        ])
+        && data.coupleSpaceId == spaceId
+        && data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128
+        && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 60
+        && data.songId is string && data.songId.size() >= 1 && data.songId.size() <= 64
+        && data.songTitle is string && data.songTitle.size() >= 1 && data.songTitle.size() <= 180
+        && data.songArtist is string && data.songArtist.size() >= 1 && data.songArtist.size() <= 140
+        && data.artworkUrl is string && data.artworkUrl.size() <= 2000
+        && data.youtubeUrl is string && data.youtubeUrl.size() <= 500
+        && data.audioUrl is string && data.audioUrl.size() <= 2000
+        && data.message is string && data.message.size() >= 1 && data.message.size() <= 600
+        && data.openedByPartner is bool;
+    }
+
+    function isValidSongStory(data, spaceId) {
+      return data.keys().hasAll([
+          'coupleSpaceId', 'songTitle', 'artist', 'dateLabel', 'story',
+          'uploaderUid', 'uploaderName', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'coupleSpaceId', 'songTitle', 'artist', 'dateLabel', 'story',
+          'imageUrl', 'storagePath', 'uploaderUid', 'uploaderName', 'createdAt', 'updatedAt'
+        ])
+        && data.coupleSpaceId == spaceId
+        && data.songTitle is string && data.songTitle.size() >= 1 && data.songTitle.size() <= 180
+        && data.artist is string && data.artist.size() >= 1 && data.artist.size() <= 140
+        && data.dateLabel is string && data.dateLabel.size() >= 1 && data.dateLabel.size() <= 60
+        && data.story is string && data.story.size() >= 1 && data.story.size() <= 1200
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 2000))
+        && (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 300))
+        && data.uploaderUid is string && data.uploaderUid.size() >= 1 && data.uploaderUid.size() <= 128
+        && data.uploaderName is string && data.uploaderName.size() >= 1 && data.uploaderName.size() <= 60;
+    }
+
+    function isValidMusicHistory(data, spaceId) {
+      return data.keys().hasAll([
+          'coupleSpaceId', 'songId', 'songTitle', 'artist', 'sourceType',
+          'playedByUid', 'playedByName', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'coupleSpaceId', 'songId', 'songTitle', 'artist', 'sourceType',
+          'playedByUid', 'playedByName', 'createdAt'
+        ])
+        && data.coupleSpaceId == spaceId
+        && data.songId is string && data.songId.size() >= 1 && data.songId.size() <= 64
+        && data.songTitle is string && data.songTitle.size() >= 1 && data.songTitle.size() <= 180
+        && data.artist is string && data.artist.size() >= 1 && data.artist.size() <= 140
+        && data.sourceType in ['audio', 'youtube']
+        && data.playedByUid is string && data.playedByUid == request.auth.uid && data.playedByUid.size() <= 128
+        && data.playedByName is string && data.playedByName.size() >= 1 && data.playedByName.size() <= 60
+        && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    function isValidTruthOrDare(data) {
+      return data.keys().hasAll(['kind', 'category', 'prompt', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['kind', 'category', 'prompt', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.kind in ['truth', 'dare']
+        && data.category in ['Romantic', 'Funny', 'Deep Talk', 'Relationship', 'Jealousy', 'Childhood', 'Future', 'Random']
+        && data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 600
+        && data.isPublic is bool
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 && data.ownerUid == request.auth.uid;
+    }
+
+    function isValidQuizQuestion(data) {
+      return data.keys().hasAll(['question', 'options', 'correctIndex', 'explanation', 'sortOrder', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['question', 'options', 'correctIndex', 'explanation', 'sortOrder', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.question is string && data.question.size() >= 1 && data.question.size() <= 400
+        && data.options is list && data.options.size() >= 2 && data.options.size() <= 4
+        && data.options[0] is string && data.options[0].size() >= 1 && data.options[0].size() <= 200
+        && data.options[1] is string && data.options[1].size() >= 1 && data.options[1].size() <= 200
+        && (data.options.size() < 3 || (data.options[2] is string && data.options[2].size() >= 1 && data.options[2].size() <= 200))
+        && (data.options.size() < 4 || (data.options[3] is string && data.options[3].size() >= 1 && data.options[3].size() <= 200))
+        && data.correctIndex is int && data.correctIndex >= 0 && data.correctIndex < data.options.size()
+        && data.explanation is string && data.explanation.size() >= 1 && data.explanation.size() <= 500
+        && data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 10000
+        && data.isPublic is bool
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 && data.ownerUid == request.auth.uid;
+    }
+
+    function isValidLoveLetter(data) {
+      return data.keys().hasAll(['title', 'body', 'author', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['title', 'body', 'author', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.body is string && data.body.size() >= 1 && data.body.size() <= 3000
+        && data.author is string && data.author.size() >= 1 && data.author.size() <= 80
+        && data.isPublic is bool
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 && data.ownerUid == request.auth.uid;
+    }
+
+    function isValidPromise(data) {
+      return data.keys().hasAll(['authorName', 'text', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['authorName', 'text', 'isPublic', 'ownerUid', 'createdAt', 'updatedAt'])
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 60
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 500
+        && data.isPublic is bool
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128;
+    }
+
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 180
+        && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    // --- Couple Pairing & Real-Time Space Collections ---
+    match /userProfiles/{uid} {
+      allow get: if isValidId(uid) && isAuthenticatedUser() && request.auth.uid == uid;
+      allow list: if false;
+      allow create: if isValidId(uid) && isAuthenticatedUser() && request.auth.uid == uid && isValidUserProfile(incoming()) && isValidTimestampOnCreate(incoming());
+      allow update: if isValidId(uid) && isAuthenticatedUser() && request.auth.uid == uid && isValidUserProfile(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['roleName', 'spaceId', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /inviteCodes/{code} {
+      allow get: if isAuthenticatedUser() && code.matches('^[A-Z0-9]{6,12}$');
+      allow list: if false;
+      allow create: if isAuthenticatedUser() && code.matches('^[A-Z0-9]{6,12}$') && isValidInviteCode(incoming()) && incoming().code == code && incoming().creatorUid == request.auth.uid && incoming().isActive == true && isValidTimestampOnCreate(incoming());
+      allow update: if isAuthenticatedUser() && code.matches('^[A-Z0-9]{6,12}$') && isValidInviteCode(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().code == existing().code
+        && incoming().spaceId == existing().spaceId
+        && incoming().creatorUid == existing().creatorUid
+        && (
+          (existing().creatorUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'updatedAt']))
+          || (existing().isActive == true && incoming().isActive == false && incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'updatedAt']))
+        );
+      allow delete: if isAuthenticatedUser() && code.matches('^[A-Z0-9]{6,12}$') && existing().creatorUid == request.auth.uid;
+    }
+
+    match /coupleSpaces/{spaceId} {
+      allow get: if isValidId(spaceId) && isAuthenticatedUser()
+        && (existing().member1Uid == request.auth.uid || (existing().member2Uid != '' && existing().member2Uid == request.auth.uid));
+      allow list: if isAuthenticatedUser() && (resource.data.member1Uid == request.auth.uid || resource.data.member2Uid == request.auth.uid);
+      allow create: if isValidId(spaceId) && isAuthenticatedUser() && isValidCoupleSpace(incoming()) && isValidTimestampOnCreate(incoming())
+        && incoming().ownerUid == request.auth.uid
+        && incoming().member1Uid == request.auth.uid
+        && incoming().member2Uid == ''
+        && incoming().memberCount == 1;
+      allow update: if isValidId(spaceId) && isAuthenticatedUser() && isValidCoupleSpace(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().member1Uid == existing().member1Uid
+        && (
+          // Action 1: Partner joins an unpaired space atomically consuming active inviteCode (strictly max 2 members)
+          (
+            existing().memberCount == 1
+            && existing().member2Uid == ''
+            && request.auth.uid != existing().member1Uid
+            && incoming().member2Uid == request.auth.uid
+            && incoming().memberCount == 2
+            && incoming().diff(existing()).affectedKeys().hasOnly(['member2Uid', 'member2Name', 'memberCount', 'updatedAt'])
+            && get(/databases/$(database)/documents/inviteCodes/$(existing().inviteCode)).data.isActive == true
+            && getAfter(/databases/$(database)/documents/inviteCodes/$(existing().inviteCode)).data.isActive == false
+          )
+          // Action 2: Paired member updates shared candle, anniversary, or music sync state
+          || (
+            isSpaceMember(spaceId)
+            && incoming().member2Uid == existing().member2Uid
+            && incoming().memberCount == existing().memberCount
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'candleLit', 'candleWish', 'anniversaryOpened',
+              'sharedSongId', 'sharedSongTitle', 'sharedSongArtist', 'sharedSongPlaying', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if false;
+
+      match /presence/{memberUid} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create, update: if isValidId(memberUid) && isSpaceMember(spaceId) && request.auth.uid == memberUid && isValidSpacePresence(incoming());
+        allow delete: if false;
+      }
+
+      match /messages/{msgId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(msgId) && isSpaceMember(spaceId) && isValidChatMessage(incoming()) && isValidTimestampOnCreate(incoming())
+          && incoming().senderUid == request.auth.uid
+          && incoming().readByPartner == false;
+        allow update: if isValidId(msgId) && isSpaceMember(spaceId) && isValidChatMessage(incoming()) && isValidTimestampOnUpdate(incoming())
+          && incoming().senderUid == existing().senderUid
+          && existing().senderUid != request.auth.uid
+          && incoming().readByPartner == true
+          && incoming().diff(existing()).affectedKeys().hasOnly(['readByPartner', 'updatedAt']);
+        allow delete: if isValidId(msgId) && isSpaceMember(spaceId) && existing().senderUid == request.auth.uid;
+      }
+
+      match /memories/{memoryId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(memoryId) && isSpaceMember(spaceId) && isValidSpaceMemory(incoming()) && isValidTimestampOnCreate(incoming())
+          && incoming().uploaderUid == request.auth.uid;
+        allow update: if isValidId(memoryId) && isSpaceMember(spaceId) && isValidSpaceMemory(incoming()) && isValidTimestampOnUpdate(incoming())
+          && incoming().uploaderUid == existing().uploaderUid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'dateLabel', 'category', 'updatedAt']);
+        allow delete: if isValidId(memoryId) && isSpaceMember(spaceId);
+
+        match /comments/{commentId} {
+          allow get, list: if isSpaceMember(spaceId);
+          allow create: if isValidId(commentId) && isSpaceMember(spaceId) && isValidMemoryComment(incoming());
+          allow update: if false;
+          allow delete: if isValidId(commentId) && isSpaceMember(spaceId) && existing().authorUid == request.auth.uid;
+        }
+      }
+
+      match /games/{gameId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create, update: if isValidId(gameId) && isSpaceMember(spaceId) && isValidSharedGameState(incoming());
+        allow delete: if false;
+      }
+
+      match /gameRooms/{roomId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(roomId)
+          && isSpaceMember(spaceId)
+          && isValidGameRoom(incoming(), spaceId, roomId)
+          && isValidTimestampOnCreate(incoming())
+          && incoming().player1Id == request.auth.uid
+          && incoming().invitedByUid == request.auth.uid
+          && incoming().status == 'invited'
+          && incoming().turnNumber == 0
+          && incoming().winnerId == '';
+        allow update: if isValidId(roomId)
+          && isSpaceMember(spaceId)
+          && isValidGameRoom(incoming(), spaceId, roomId)
+          && isValidTimestampOnUpdate(incoming())
+          && incoming().roomId == existing().roomId
+          && incoming().coupleSpaceId == existing().coupleSpaceId
+          && incoming().player1Id == existing().player1Id
+          && incoming().player2Id == existing().player2Id
+          && incoming().invitedByUid == existing().invitedByUid
+          && incoming().gameType == existing().gameType
+          && (request.auth.uid == existing().player1Id || request.auth.uid == existing().player2Id)
+          && (
+            (
+              existing().status == 'invited'
+              && incoming().status == 'lobby'
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'player1Ready', 'player2Ready', 'updatedAt'])
+            )
+            || (
+              (existing().status == 'invited' || existing().status == 'lobby')
+              && (incoming().status == 'lobby' || incoming().status == 'playing')
+              && incoming().diff(existing()).affectedKeys().hasOnly(['player1Ready', 'player2Ready', 'status', 'updatedAt'])
+            )
+            || (
+              existing().status == 'playing'
+              && (incoming().status == 'playing' || incoming().status == 'finished')
+              && incoming().turnNumber == existing().turnNumber + 1
+              && (existing().currentTurn == 'both' || existing().currentTurn == request.auth.uid)
+              && incoming().diff(existing()).affectedKeys().hasOnly(['currentTurn', 'turnNumber', 'gameState', 'score', 'winnerId', 'status', 'updatedAt'])
+            )
+            || (
+              (incoming().status == 'closed' || incoming().status == 'finished')
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'winnerId', 'score', 'gameState', 'updatedAt'])
+            )
+            || (
+              existing().status == 'finished'
+              && (incoming().status == 'finished' || incoming().status == 'playing' || incoming().status == 'lobby')
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'rematchVotes', 'status', 'player1Ready', 'player2Ready', 'currentTurn',
+                'turnNumber', 'gameState', 'score', 'winnerId', 'updatedAt'
+              ])
+            )
+          );
+        allow delete: if isValidId(roomId)
+          && isSpaceMember(spaceId)
+          && (existing().player1Id == request.auth.uid || existing().player2Id == request.auth.uid);
+      }
+
+      match /gameHistory/{historyId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(historyId)
+          && isSpaceMember(spaceId)
+          && isValidGameHistory(incoming(), spaceId)
+          && isValidTimestampOnCreate(incoming())
+          && (request.auth.uid == incoming().player1Id || request.auth.uid == incoming().player2Id);
+        allow update: if false;
+        allow delete: if isValidId(historyId) && isSpaceMember(spaceId);
+      }
+
+      match /songs/{songId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(songId) && isSpaceMember(spaceId) && isValidSong(incoming()) && isValidTimestampOnCreate(incoming())
+          && incoming().ownerUid == request.auth.uid;
+        allow update: if isValidId(songId) && isSpaceMember(spaceId) && isValidSong(incoming()) && isValidTimestampOnUpdate(incoming())
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'artist', 'youtubeUrl', 'youtubeId', 'audioUrl', 'artworkUrl',
+            'sourceType', 'playlistId', 'moodTag', 'isFavorite', 'isSpecialSong',
+            'sortOrder', 'updatedAt'
+          ]);
+        allow delete: if isValidId(songId) && isSpaceMember(spaceId)
+          && (existing().ownerUid == request.auth.uid || getSpace(spaceId).ownerUid == request.auth.uid);
+      }
+
+      match /playlists/{playlistId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(playlistId) && isSpaceMember(spaceId) && isValidSharedPlaylist(incoming(), spaceId) && isValidTimestampOnCreate(incoming())
+          && incoming().creatorUid == request.auth.uid;
+        allow update: if isValidId(playlistId) && isSpaceMember(spaceId) && isValidSharedPlaylist(incoming(), spaceId) && isValidTimestampOnUpdate(incoming())
+          && incoming().coupleSpaceId == existing().coupleSpaceId
+          && incoming().creatorUid == existing().creatorUid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'moodType', 'updatedAt']);
+        allow delete: if isValidId(playlistId) && isSpaceMember(spaceId)
+          && (existing().creatorUid == request.auth.uid || getSpace(spaceId).ownerUid == request.auth.uid);
+      }
+
+      match /radioSync/{syncId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create, update: if isValidId(syncId) && syncId == 'current' && isSpaceMember(spaceId) && isValidRadioSync(incoming(), spaceId);
+        allow delete: if false;
+      }
+
+      match /songDedications/{dedicationId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(dedicationId) && isSpaceMember(spaceId) && isValidSongDedication(incoming(), spaceId) && isValidTimestampOnCreate(incoming())
+          && incoming().senderUid == request.auth.uid
+          && incoming().openedByPartner == false;
+        allow update: if isValidId(dedicationId) && isSpaceMember(spaceId) && isValidSongDedication(incoming(), spaceId) && isValidTimestampOnUpdate(incoming())
+          && incoming().coupleSpaceId == existing().coupleSpaceId
+          && incoming().senderUid == existing().senderUid
+          && existing().senderUid != request.auth.uid
+          && incoming().openedByPartner == true
+          && incoming().diff(existing()).affectedKeys().hasOnly(['openedByPartner', 'updatedAt']);
+        allow delete: if isValidId(dedicationId) && isSpaceMember(spaceId)
+          && (existing().senderUid == request.auth.uid || getSpace(spaceId).ownerUid == request.auth.uid);
+      }
+
+      match /songStories/{storyId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(storyId) && isSpaceMember(spaceId) && isValidSongStory(incoming(), spaceId) && isValidTimestampOnCreate(incoming())
+          && incoming().uploaderUid == request.auth.uid;
+        allow update: if isValidId(storyId) && isSpaceMember(spaceId) && isValidSongStory(incoming(), spaceId) && isValidTimestampOnUpdate(incoming())
+          && incoming().coupleSpaceId == existing().coupleSpaceId
+          && incoming().uploaderUid == existing().uploaderUid
+          && incoming().uploaderUid == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['songTitle', 'artist', 'dateLabel', 'story', 'updatedAt']);
+        allow delete: if isValidId(storyId) && isSpaceMember(spaceId)
+          && (existing().uploaderUid == request.auth.uid || getSpace(spaceId).ownerUid == request.auth.uid);
+      }
+
+      match /musicHistory/{historyId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(historyId) && isSpaceMember(spaceId) && isValidMusicHistory(incoming(), spaceId);
+        allow update: if false;
+        allow delete: if isValidId(historyId) && isSpaceMember(spaceId);
+      }
+
+      match /promises/{promiseId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(promiseId) && isSpaceMember(spaceId) && isValidPromise(incoming()) && isValidTimestampOnCreate(incoming())
+          && incoming().ownerUid == request.auth.uid;
+        allow update: if isValidId(promiseId) && isSpaceMember(spaceId) && isValidPromise(incoming()) && isValidTimestampOnUpdate(incoming())
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['authorName', 'text', 'updatedAt']);
+        allow delete: if isValidId(promiseId) && isSpaceMember(spaceId);
+      }
+
+      match /timeline/{itemId} {
+        allow get, list: if isSpaceMember(spaceId);
+        allow create: if isValidId(itemId) && isSpaceMember(spaceId) && isValidTimelineItem(incoming()) && isValidTimestampOnCreate(incoming())
+          && incoming().ownerUid == request.auth.uid;
+        allow update: if isValidId(itemId) && isSpaceMember(spaceId) && isValidTimelineItem(incoming()) && isValidTimestampOnUpdate(incoming())
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'dateLabel', 'description', 'imageUrl', 'sortOrder', 'updatedAt']);
+        allow delete: if isValidId(itemId) && isSpaceMember(spaceId);
+      }
+    }
+
+    // --- Existing Showcase & Admin Collections ---
+    match /siteConfig/{configId} {
+      allow get: if isValidId(configId) && configId == 'main';
+      allow list: if false;
+      allow create: if isValidId(configId) && configId == 'main' && isAdmin() && isValidSiteConfig(incoming()) && isValidTimestampOnCreate(incoming());
+      allow update: if isValidId(configId) && configId == 'main' && isAdmin() && isValidSiteConfig(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'coupleNames', 'heroGreeting', 'couplePhotoUrl', 'finalLetter',
+          'secretHint', 'secretCodeHash', 'secretMessage', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /memories/{memoryId} {
+      allow get: if isValidId(memoryId) && (existing().isPublic == true || isAdmin());
+      allow list: if resource.data.isPublic == true || isVerifiedAdminEmail();
+      allow create: if isValidId(memoryId) && isAdmin() && isValidMemory(incoming()) && isValidTimestampOnCreate(incoming());
+      allow update: if isValidId(memoryId) && isAdmin() && isValidMemory(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'dateLabel', 'category', 'imageUrl', 'storagePath', 'isPublic', 'updatedAt']);
+      allow delete: if isValidId(memoryId) && isAdmin();
+    }
+
+    match /timeline/{itemId} {
+      allow get: if isValidId(itemId) && (existing().isPublic == true || isAdmin());
+      allow list: if resource.data.isPublic == true || isVerifiedAdminEmail();
+      allow create: if isValidId(itemId) && isAdmin() && isValidTimelineItem(incoming()) && isValidTimestampOnCreate(incoming()) && incoming().ownerUid == request.auth.uid;
+      allow update: if isValidId(itemId) && isAdmin() && isValidTimelineItem(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'dateLabel', 'description', 'imageUrl', 'sortOrder', 'isPublic', 'updatedAt']);
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    match /songs/{songId} {
+      allow get: if isValidId(songId) && (existing().isPublic == true || isAdmin());
+      allow list: if resource.data.isPublic == true || isVerifiedAdminEmail();
+      allow create: if isValidId(songId) && isAdmin() && isValidSong(incoming()) && isValidTimestampOnCreate(incoming()) && incoming().ownerUid == request.auth.uid;
+      allow update: if isValidId(songId) && isAdmin() && isValidSong(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'artist', 'youtubeUrl', 'youtubeId', 'sortOrder', 'isPublic', 'updatedAt']);
+      allow delete: if isValidId(songId) && isAdmin();
+    }
+
+    match /truthOrDare/{itemId} {
+      allow get: if isValidId(itemId) && (existing().isPublic == true || isAdmin());
+      allow list: if resource.data.isPublic == true || isVerifiedAdminEmail();
+      allow create: if isValidId(itemId) && isAdmin() && isValidTruthOrDare(incoming()) && isValidTimestampOnCreate(incoming());
+      allow update: if isValidId(itemId) && isAdmin() && isValidTruthOrDare(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['kind', 'category', 'prompt', 'isPublic', 'updatedAt']);
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    match /quizQuestions/{itemId} {
+      allow get: if isValidId(itemId) && (existing().isPublic == true || isAdmin());
+      allow list: if resource.data.isPublic == true || isVerifiedAdminEmail();
+      allow create: if isValidId(itemId) && isAdmin() && isValidQuizQuestion(incoming()) && isValidTimestampOnCreate(incoming());
+      allow update: if isValidId(itemId) && isAdmin() && isValidQuizQuestion(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['question', 'options', 'correctIndex', 'explanation', 'sortOrder', 'isPublic', 'updatedAt']);
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    match /loveLetters/{itemId} {
+      allow get: if isValidId(itemId) && (existing().isPublic == true || isAdmin());
+      allow list: if resource.data.isPublic == true || isVerifiedAdminEmail();
+      allow create: if isValidId(itemId) && isAdmin() && isValidLoveLetter(incoming()) && isValidTimestampOnCreate(incoming());
+      allow update: if isValidId(itemId) && isAdmin() && isValidLoveLetter(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'author', 'isPublic', 'updatedAt']);
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    match /promises/{promiseId} {
+      allow get: if isValidId(promiseId) && (existing().isPublic == true || isAdmin());
+      allow list: if resource.data.isPublic == true || isVerifiedAdminEmail();
+      allow create: if isValidId(promiseId) && isAuthenticatedUser() && request.auth.token.email_verified == true && isValidPromise(incoming()) && incoming().ownerUid == request.auth.uid && isValidTimestampOnCreate(incoming());
+      allow update: if isValidId(promiseId) && isAuthenticatedUser() && request.auth.token.email_verified == true && isValidPromise(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && (
+          isAdmin()
+          || (existing().ownerUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['authorName', 'text', 'updatedAt']))
+        );
+      allow delete: if isValidId(promiseId) && (isAdmin() || (isAuthenticatedUser() && existing().ownerUid == request.auth.uid));
+    }
+
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isAuthenticatedUser() && request.auth.token.email_verified == true && (request.auth.uid == adminId || isAdmin());
+      allow list: if false;
+      allow create: if isValidId(adminId) && isAdmin() && isValidAdminUser(incoming()) && incoming().uid == adminId;
+      allow update: if false;
+      allow delete: if isValidId(adminId) && isAdmin() && adminId != request.auth.uid;
+    }
+  }
+}

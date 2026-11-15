@@ -1,0 +1,6 @@
+{
+  "name": "Zikri & Diann — Our Little World",
+  "description": "Website anniversary pertama interaktif dari Zikri untuk Diann dengan real-time countdown WIT, tiup lilin virtual, mini games, ruang musik, album kenangan, dan surat cinta.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
